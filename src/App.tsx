@@ -17,41 +17,9 @@ interface ColorTheme {
   text: string;
   dot: string;
 }
-
 const FONTS: FontOption[] = [
   {
-    id: "syne",
-    name: "Syne",
-    family: '"Syne", sans-serif',
-    weight: "800",
-    lineHeight: 1.05,
-    googleParam: "family=Syne:wght@800",
-  },
-  {
-    id: "italiana",
-    name: "Italiana",
-    family: '"Italiana", serif',
-    weight: "400",
-    lineHeight: 1.15,
-    googleParam: "family=Italiana",
-  },
-  {
-    id: "rock-salt",
-    name: "Rock Salt",
-    family: '"Rock Salt", cursive',
-    weight: "400",
-    lineHeight: 1.3,
-    googleParam: "family=Rock+Salt",
-  },
-  {
-    id: "fraunces",
-    name: "Fraunces",
-    family: '"Fraunces", serif',
-    weight: "900",
-    lineHeight: 1.05,
-    googleParam: "family=Fraunces:opsz,wght@9..144,900",
-  },
-  {
+    // 1. Clean Grotesque (The reliable modern default)
     id: "inter",
     name: "Inter",
     family: '"Inter", sans-serif',
@@ -60,12 +28,67 @@ const FONTS: FontOption[] = [
     googleParam: "family=Inter:wght@700",
   },
   {
-    id: "silkscreen",
-    name: "Silkscreen",
-    family: '"Silkscreen", monospace',
+    // 2. High-Contrast Editorial Serif (Warm & dramatic)
+    id: "fraunces",
+    name: "Fraunces",
+    family: '"Fraunces", serif',
+    weight: "900",
+    lineHeight: 1.05,
+    googleParam: "family=Fraunces:opsz,wght@9..144,900",
+  },
+  {
+    // 3. Natural Handwritten Script (Replaces Rock Salt with Caveat)
+    id: "caveat",
+    name: "Caveat",
+    family: '"Caveat", cursive',
     weight: "700",
-    lineHeight: 1.25,
-    googleParam: "family=Silkscreen:wght@700",
+    lineHeight: 1.15,
+    googleParam: "family=Caveat:wght@700",
+  },
+  {
+    // 4. Authentic Pixel / Game Font (The closest Google Font to Minecraft)
+    id: "vt323",
+    name: "VT323",
+    family: '"VT323", monospace',
+    weight: "400",
+    lineHeight: 1.0,
+    googleParam: "family=VT323",
+  },
+  {
+    // 5. Retro 1950s Fun / Cartoon Display
+    id: "fontdiner-swanky",
+    name: "Fontdiner Swanky",
+    family: '"Fontdiner Swanky", cursive',
+    weight: "400",
+    lineHeight: 1.15,
+    googleParam: "family=Fontdiner+Swanky",
+  },
+  {
+    // 6. Dot-Matrix 80s Gradient Effect
+    id: "rubik-80s-fade",
+    name: "Rubik 80s Fade",
+    family: '"Rubik 80s Fade", cursive',
+    weight: "400",
+    lineHeight: 1.1,
+    googleParam: "family=Rubik+80s+Fade",
+  },
+  {
+    // 7. Wild West Woodblock Slab Serif
+    id: "rye",
+    name: "Rye",
+    family: '"Rye", serif',
+    weight: "400",
+    lineHeight: 1.15,
+    googleParam: "family=Rye",
+  },
+  {
+    // 8. Playful Rounded Handwritten
+    id: "fuzzy-bubbles",
+    name: "Fuzzy Bubbles",
+    family: '"Fuzzy Bubbles", cursive',
+    weight: "700",
+    lineHeight: 1.2,
+    googleParam: "family=Fuzzy+Bubbles:wght@700",
   },
 ];
 
@@ -108,7 +131,7 @@ const THEMES: ColorTheme[] = [
   {
     id: "paper",
     name: "Warm Parchment",
-    bg: "#e8e5de",
+    bg: "#fcf8cf",
     text: "#21201d",
     dot: "#cbc6bc",
   },
