@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Reactions } from "./Reactions";
 
 interface FontOption {
   id: string;
@@ -121,6 +120,7 @@ const STORAGE_KEYS = {
 };
 
 const MAX_FONT_SIZE = 64;
+const EMOJIS = ["💀", "👀", "🔥", "😂", "❓", "👍"];
 
 function snapToScale(rawSize: number): number {
   let step = 4;
@@ -128,6 +128,111 @@ function snapToScale(rawSize: number): number {
   else if (rawSize > 32) step = 6;
   return Math.floor(rawSize / step) * step;
 }
+
+// --------------------------------------------------------
+// DROP-IN REACTIONS COMPONENT
+// --------------------------------------------------------
+export function Reactions({ theme }: { theme: ColorTheme }) {
+  const [overlay, setOverlay] = useState({ emoji: EMOJIS[0], show: false });
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const triggerReaction = (emoji: string) => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+    // Set to show
+    setOverlay({ emoji, show: true });
+
+    // Auto fade-out after 1.5s
+    timeoutRef.current = setTimeout(() => {
+      setOverlay((prev) => ({ ...prev, show: false }));
+    }, 1500);
+  };
+
+  return (
+    <>
+      {/* Inject custom hover styles dynamically based on the current theme */}
+      <style>{`
+        .reaction-btn {
+          opacity: 0.35;
+          transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .reaction-btn:hover {
+          opacity: 1 !important;
+          background-color: ${theme.text}18 !important;
+          transform: translateY(-4px) scale(1.05);
+        }
+        .reaction-btn:active {
+          transform: translateY(0px) scale(0.95);
+        }
+      `}</style>
+
+      {/* 128px Center Overlay (Never Unmounts) */}
+      <div
+        style={{
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          fontSize: "128px",
+          pointerEvents: "none",
+          zIndex: 50,
+          // The magic sauce: Pop in with a spring, fade out gracefully
+          transform: overlay.show
+            ? "translate(-50%, -50%) scale(1) translateY(0px)"
+            : "translate(-50%, -50%) scale(0.4) translateY(40px)",
+          opacity: overlay.show ? 1 : 0,
+          filter: overlay.show
+            ? "drop-shadow(0 20px 30px rgba(0,0,0,0.3))"
+            : "drop-shadow(0 0px 0px rgba(0,0,0,0))",
+          transition: overlay.show
+            ? "transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s ease-out, filter 0.4s ease-out"
+            : "transform 0.6s ease-in, opacity 0.5s ease-in, filter 0.6s ease-in",
+        }}
+      >
+        {overlay.emoji}
+      </div>
+
+      {/* Bottom Buttons Bar */}
+      <aside
+        style={{
+          position: "fixed",
+          bottom: "24px",
+          left: "50%",
+          transform: "translateX(-50%)",
+          display: "flex",
+          gap: "12px",
+          zIndex: 10,
+        }}
+      >
+        {EMOJIS.map((emoji) => (
+          <button
+            key={emoji}
+            className="reaction-btn"
+            onClick={(e) => {
+              e.preventDefault();
+              triggerReaction(emoji);
+            }}
+            style={{
+              width: "46px",
+              height: "46px",
+              borderRadius: "12px",
+              border: `1px solid ${theme.text}26`,
+              backgroundColor: "transparent",
+              color: theme.text,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              fontSize: "22px",
+            }}
+          >
+            {emoji}
+          </button>
+        ))}
+      </aside>
+    </>
+  );
+}
+// --------------------------------------------------------
 
 export default function App() {
   const [text, setText] = useState<string>(() => {
@@ -227,7 +332,8 @@ export default function App() {
 
       const { clientWidth, clientHeight } = containerRef.current;
       const paddingX = 160;
-      const paddingY = 60;
+      const paddingY = 140; // Increased to ensure text doesn't overlap the new bottom buttons
+
       const availableWidth = clientWidth - paddingX;
       const availableHeight = clientHeight - paddingY;
 
@@ -288,6 +394,9 @@ export default function App() {
         userSelect: "none",
       }}
     >
+      {/* Drop-in Reactions Component */}
+      <Reactions theme={theme} />
+
       {/* Muted Color Theme Palette */}
       <aside
         style={{
@@ -396,7 +505,6 @@ export default function App() {
           cursor: "text",
         }}
       >
-        <Reactions theme={theme} />
         <textarea
           ref={textRef}
           value={text}
