@@ -134,7 +134,7 @@ function snapToScale(rawSize: number): number {
 // --------------------------------------------------------
 export function Reactions({ theme }: { theme: ColorTheme }) {
   const [overlay, setOverlay] = useState({ emoji: EMOJIS[0], show: false });
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const triggerReaction = (emoji: string) => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
