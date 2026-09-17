@@ -68,7 +68,6 @@ const FONTS: FontOption[] = [
   },
 ];
 
-// Subtle, low-saturation, muted color pairings
 const THEMES: ColorTheme[] = [
   {
     id: "mono-dark",
@@ -114,6 +113,12 @@ const THEMES: ColorTheme[] = [
   },
 ];
 
+const STORAGE_KEYS = {
+  TEXT: "app_text",
+  FONT_ID: "app_font_id",
+  THEME_ID: "app_theme_id",
+};
+
 const MAX_FONT_SIZE = 64;
 
 function snapToScale(rawSize: number): number {
@@ -126,12 +131,27 @@ function snapToScale(rawSize: number): number {
 export default function App() {
   const [text, setText] = useState<string>(() => {
     const hash = window.location.hash.slice(1);
-    return hash ? decodeURIComponent(hash) : "TYPE SOMETHING";
+    if (hash) {
+      try {
+        return decodeURIComponent(hash);
+      } catch {
+        return "";
+      }
+    }
+    return localStorage.getItem(STORAGE_KEYS.TEXT) ?? "";
+  });
+
+  const [font, setFont] = useState<FontOption>(() => {
+    const savedFontId = localStorage.getItem(STORAGE_KEYS.FONT_ID);
+    return FONTS.find((f) => f.id === savedFontId) ?? FONTS[0];
+  });
+
+  const [theme, setTheme] = useState<ColorTheme>(() => {
+    const savedThemeId = localStorage.getItem(STORAGE_KEYS.THEME_ID);
+    return THEMES.find((t) => t.id === savedThemeId) ?? THEMES[0];
   });
 
   const [fontSize, setFontSize] = useState<number>(MAX_FONT_SIZE);
-  const [font, setFont] = useState<FontOption>(FONTS[0]);
-  const [theme, setTheme] = useState<ColorTheme>(THEMES[0]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -172,16 +192,39 @@ export default function App() {
     }
   }, []);
 
-  // Fit font size up to 64px
+  // Persist selections and text to localStorage & URL hash
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.FONT_ID, font.id);
+  }, [font.id]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.THEME_ID, theme.id);
+  }, [theme.id]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.TEXT, text);
+    if (text) {
+      window.history.replaceState(null, "", `#${encodeURIComponent(text)}`);
+    } else {
+      window.history.replaceState(
+        null,
+        "",
+        window.location.pathname + window.location.search,
+      );
+    }
+  }, [text]);
+
+  // Fit font size up to 64px based on available container bounds
   useLayoutEffect(() => {
     const calculateFontSize = () => {
-      if (!containerRef.current || !text.trim()) {
+      const displayText = text.trim() || "TYPE...";
+
+      if (!containerRef.current) {
         setFontSize(MAX_FONT_SIZE);
         return;
       }
 
       const { clientWidth, clientHeight } = containerRef.current;
-      // Allow padding clearance for both the left (colors) and right (fonts) controls
       const paddingX = 160;
       const paddingY = 60;
       const availableWidth = clientWidth - paddingX;
@@ -202,7 +245,7 @@ export default function App() {
       dummy.style.fontWeight = font.weight;
       dummy.style.lineHeight = `${font.lineHeight}`;
       dummy.style.width = `${availableWidth}px`;
-      dummy.innerText = text;
+      dummy.innerText = displayText;
       document.body.appendChild(dummy);
 
       while (min <= max) {
@@ -229,13 +272,6 @@ export default function App() {
     return () => window.removeEventListener("resize", calculateFontSize);
   }, [text, font]);
 
-  // Keep hash synced
-  useEffect(() => {
-    if (text) {
-      window.history.replaceState(null, "", `#${encodeURIComponent(text)}`);
-    }
-  }, [text]);
-
   return (
     <div
       style={{
@@ -251,7 +287,7 @@ export default function App() {
         userSelect: "none",
       }}
     >
-      {/* Subtle Muted Color Column on the Left */}
+      {/* Muted Color Theme Palette */}
       <aside
         style={{
           position: "fixed",
@@ -295,7 +331,7 @@ export default function App() {
         })}
       </aside>
 
-      {/* Clickable Font Column on the Right */}
+      {/* Font Family Picker */}
       <aside
         style={{
           position: "fixed",
