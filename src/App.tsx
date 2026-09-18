@@ -63,7 +63,6 @@ export default function App() {
       *, *::before, *::after { box-sizing: border-box; }
       html, body, #root { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
       
-      /* Only reveal foreground text when highlighted */
       textarea::selection {
         background-color: ${theme.text}33;
         color: ${theme.text} !important; 
@@ -86,24 +85,27 @@ export default function App() {
     setHasSelection(target.selectionStart !== target.selectionEnd);
   };
 
-  // THE FIX: Both layers share the exact same box model and typography
+  // Centered island capped at 800px, text left-aligned inside
   const sharedTextStyles: React.CSSProperties = {
     position: "absolute",
-    inset: "48px",
-    width: "calc(100% - 96px)",
-    height: "calc(100% - 96px)",
-    margin: 0,
+    top: "64px",
+    bottom: "64px",
+    left: 0,
+    right: 0,
+    width: "calc(100% - 168px)", // clears left/right toolbars
+    maxWidth: "800px", // capped reading column
+    margin: "0 auto", // centers the 800px block
     padding: 0,
     fontFamily: font.family,
     fontWeight: font.weight,
     fontSize: `${fontSize}px`,
     lineHeight: font.lineHeight,
-    textAlign: "center",
+    textAlign: "left",
     whiteSpace: "pre-wrap",
     wordBreak: "break-word",
     border: "none",
     boxSizing: "border-box",
-    overflow: "hidden", // hide scrollbars so metrics match
+    overflow: "hidden",
   };
 
   return (
@@ -148,7 +150,7 @@ export default function App() {
             ...sharedTextStyles,
             pointerEvents: "none",
             color: theme.text,
-            opacity: hasSelection || !text ? 0.35 : 1, // Fades when selecting or empty
+            opacity: hasSelection || !text ? 0.35 : 1,
             transition: "opacity 0.1s ease, color 0.25s ease",
             zIndex: 1,
           }}
@@ -173,8 +175,8 @@ export default function App() {
           style={{
             ...sharedTextStyles,
             backgroundColor: "transparent",
-            color: "transparent", // Text stays invisible normally
-            caretColor: theme.text, // Keeps the native blinking cursor visible!
+            color: "transparent",
+            caretColor: theme.text,
             outline: "none",
             resize: "none",
             zIndex: 2,

@@ -13,8 +13,9 @@ export function useAutoFontSize(
       const container = containerRef.current;
       if (!container) return;
 
-      const availableWidth = container.clientWidth - 160;
-      const availableHeight = container.clientHeight - 60;
+      // Bound to Math.min with 800px so sizing matches the max-width clamp
+      const availableWidth = Math.min(800, container.clientWidth - 168);
+      const availableHeight = container.clientHeight - 128;
       if (availableWidth <= 0 || availableHeight <= 0) return;
 
       const dummy = document.createElement("div");
@@ -27,6 +28,7 @@ export function useAutoFontSize(
         fontWeight: font.weight,
         lineHeight: `${font.lineHeight}`,
         width: `${availableWidth}px`,
+        textAlign: "left",
       });
       dummy.innerText = text.trim() || "TYPE...";
       document.body.appendChild(dummy);

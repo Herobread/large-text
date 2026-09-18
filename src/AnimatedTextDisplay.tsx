@@ -1,36 +1,46 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 interface AnimatedTextDisplayProps {
   text: string;
 }
 
 export function AnimatedTextDisplay({ text }: AnimatedTextDisplayProps) {
+  const [isPaused, setIsPaused] = useState(false);
+
   useEffect(() => {
-    if (!document.querySelector("style[data-text-anim]")) {
+    setIsPaused(false);
+    const timer = setTimeout(() => {
+      setIsPaused(true);
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [text]);
+
+  useEffect(() => {
+    if (!document.querySelector("style[data-word-anim]")) {
       const style = document.createElement("style");
-      style.dataset.textAnim = "true";
+      style.dataset.wordAnim = "true";
       style.textContent = `
-        @keyframes charPop {
+        @keyframes wordLockIn {
           0% {
-            opacity: 0;
-            transform: translateY(16px) scale(0.7) rotate(-4deg);
-            filter: blur(4px);
-          }
-          65% {
-            opacity: 1;
-            transform: translateY(-2px) scale(1.05) rotate(1deg);
-            filter: blur(0);
+            opacity: 0.45;
+            filter: blur(1px);
           }
           100% {
             opacity: 1;
-            transform: translateY(0) scale(1) rotate(0deg);
+            filter: blur(0);
           }
         }
 
-        .anim-char {
-          display: inline-block;
-          animation: charPop 0.22s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
-          will-change: transform, opacity;
+        .word-locked {
+          display: inline;
+          animation: wordLockIn 0.12s ease-out forwards;
+        }
+
+        .word-active {
+          display: inline;
+          opacity: 0.45;
+          transition: opacity 0.1s ease;
         }
       `;
       document.head.appendChild(style);
@@ -38,19 +48,26 @@ export function AnimatedTextDisplay({ text }: AnimatedTextDisplayProps) {
   }, []);
 
   const displayText = text || "TYPE...";
+  // Split on whitespace boundaries while preserving whitespace sequences exactly
+  const tokens = displayText.match(/\S+|\s+/g) || [];
 
   return (
     <>
-      {displayText.split("").map((char, index) => {
-        if (char === "\n") {
-          return <br key={index} />;
+      {tokens.map((token, index) => {
+        // Render whitespace verbatim to preserve exact word-wrap parity with the textarea
+        if (/^\s+$/.test(token)) {
+          return token;
         }
-        if (char === " ") {
-          return <span key={index}>&nbsp;</span>;
-        }
+
+        const isLastToken = index === tokens.length - 1;
+        const isActive = isLastToken && !isPaused;
+
         return (
-          <span key={`${char}-${index}`} className="anim-char">
-            {char}
+          <span
+            key={`${index}-${token}`}
+            className={isActive ? "word-active" : "word-locked"}
+          >
+            {token}
           </span>
         );
       })}
