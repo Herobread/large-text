@@ -34,6 +34,20 @@ export default function App() {
   const textRef = useRef<HTMLTextAreaElement>(null);
   const fontSize = useAutoFontSize(containerRef, text, font);
 
+  // Reactive Typography detection:
+  // - Rage / Intensity: ALL CAPS (min 2 chars) OR multiple exclamation marks like "!!" or "?!"
+  // - Whisper / Calm: ends with ellipsis "..." or "…"
+  const cleanText = text.trim();
+  const hasMultipleExclamations = /!{2,}|\?!|!\?/.test(cleanText);
+  const hasLetters = /[a-zA-Z]/.test(cleanText);
+  const isAllCaps =
+    hasLetters &&
+    cleanText.length >= 2 &&
+    cleanText === cleanText.toUpperCase() &&
+    !/[a-z]/.test(cleanText);
+  const isRage = isAllCaps || hasMultipleExclamations;
+  const isWhisper = !isRage && /(\.{3,}|…)$/.test(cleanText);
+
   useEffect(() => {
     const fontParams = FONTS.map((f) => f.googleParam).join("&");
     const fontUrl = `https://fonts.googleapis.com/css2?${fontParams}&display=swap`;
@@ -85,16 +99,27 @@ export default function App() {
     setHasSelection(target.selectionStart !== target.selectionEnd);
   };
 
-  // Centered island capped at 800px, text left-aligned inside
-  const sharedTextStyles: React.CSSProperties = {
+  const textStageStyles: React.CSSProperties = {
     position: "absolute",
     top: "64px",
     bottom: "64px",
     left: 0,
     right: 0,
-    width: "calc(100% - 168px)", // clears left/right toolbars
-    maxWidth: "800px", // capped reading column
-    margin: "0 auto", // centers the 800px block
+    width: "calc(100% - 168px)",
+    maxWidth: "800px",
+    margin: "0 auto",
+    boxSizing: "border-box",
+  };
+
+  const sharedTextStyles: React.CSSProperties = {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    width: "100%",
+    height: "100%",
+    margin: 0,
     padding: 0,
     fontFamily: font.family,
     fontWeight: font.weight,
@@ -143,45 +168,59 @@ export default function App() {
       >
         <Reactions theme={theme} />
 
-        {/* 1. ANIMATED BACKGROUND LAYER */}
+        {/* TEXT STAGE (Applies Rage Vibration & Whisper Shimmer seamlessly to text & caret) */}
         <div
-          aria-hidden="true"
-          style={{
-            ...sharedTextStyles,
-            pointerEvents: "none",
-            color: theme.text,
-            opacity: hasSelection || !text ? 0.35 : 1,
-            transition: "opacity 0.1s ease, color 0.25s ease",
-            zIndex: 1,
-          }}
+          className={`text-stage ${isRage ? "text-rage" : isWhisper ? "text-whisper" : ""}`}
+          style={
+            {
+              ...textStageStyles,
+              "--shimmer-dim": `${theme.text}40`,
+              "--shimmer-bright": theme.text,
+            } as React.CSSProperties
+          }
         >
-          <AnimatedTextDisplay text={text} />
-        </div>
+          {/* 1. ANIMATED BACKGROUND LAYER */}
+          <div
+            aria-hidden="true"
+            style={{
+              ...sharedTextStyles,
+              pointerEvents: "none",
+              color: isWhisper ? "transparent" : theme.text,
+              opacity: hasSelection || !text ? 0.35 : 1,
+              transition: "opacity 0.1s ease, color 0.25s ease",
+              zIndex: 1,
+            }}
+          >
+            <span className="shimmer-text-target">
+              <AnimatedTextDisplay text={text} />
+            </span>
+          </div>
 
-        {/* 2. INTERACTIVE FOREGROUND LAYER */}
-        <textarea
-          ref={textRef}
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            checkSelection(e);
-          }}
-          onSelect={checkSelection}
-          onKeyUp={checkSelection}
-          onMouseUp={checkSelection}
-          onBlur={() => setHasSelection(false)}
-          autoFocus
-          spellCheck={false}
-          style={{
-            ...sharedTextStyles,
-            backgroundColor: "transparent",
-            color: "transparent",
-            caretColor: theme.text,
-            outline: "none",
-            resize: "none",
-            zIndex: 2,
-          }}
-        />
+          {/* 2. INTERACTIVE FOREGROUND LAYER */}
+          <textarea
+            ref={textRef}
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              checkSelection(e);
+            }}
+            onSelect={checkSelection}
+            onKeyUp={checkSelection}
+            onMouseUp={checkSelection}
+            onBlur={() => setHasSelection(false)}
+            autoFocus
+            spellCheck={false}
+            style={{
+              ...sharedTextStyles,
+              backgroundColor: "transparent",
+              color: "transparent",
+              caretColor: theme.text,
+              outline: "none",
+              resize: "none",
+              zIndex: 2,
+            }}
+          />
+        </div>
       </main>
     </div>
   );

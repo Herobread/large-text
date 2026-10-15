@@ -41,3 +41,65 @@ body,
 .reaction-btn:hover .reaction-shortcut-badge {
   opacity: 0.85 !important;
 }
+
+/* Emotion / Rage Shaking Typography */
+@keyframes rageShake {
+  0% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  14% { transform: translate3d(-2px, 1.5px, 0) rotate(-0.5deg); }
+  28% { transform: translate3d(2.5px, -1.2px, 0) rotate(0.4deg); }
+  42% { transform: translate3d(-1.5px, -2px, 0) rotate(0.3deg); }
+  57% { transform: translate3d(2px, 1.8px, 0) rotate(-0.4deg); }
+  71% { transform: translate3d(-2px, -1px, 0) rotate(0.2deg); }
+  85% { transform: translate3d(1.8px, 1px, 0) rotate(-0.3deg); }
+  100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+}
+
+.text-rage {
+  animation: rageShake 0.16s infinite linear;
+  will-change: transform;
+}
+
+/* Whisper / Apple Slide-to-Unlock Skeleton Loading Shimmer */
+@keyframes appleSlideShimmer {
+  0% {
+    background-position: 200% 0, 0 0;
+  }
+  88% {
+    background-position: -60% 0, 0 0;
+  }
+  100% {
+    background-position: -60% 0, 0 0;
+  }
+}
+
+.text-whisper .shimmer-text-target {
+  display: inline;
+  background-image:
+    linear-gradient(
+      110deg,
+      transparent 0%,
+      transparent 35%,
+      var(--shimmer-bright, #ffffff) 50%,
+      transparent 65%,
+      transparent 100%
+    ),
+    linear-gradient(
+      0deg,
+      var(--shimmer-dim, rgba(255, 255, 255, 0.35)),
+      var(--shimmer-dim, rgba(255, 255, 255, 0.35))
+    );
+  background-size: 200% 100%, 100% 100%;
+  background-repeat: no-repeat, no-repeat;
+  background-position: 200% 0, 0 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent !important;
+  animation: appleSlideShimmer 3.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.text-whisper .shimmer-text-target span {
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+}
+
