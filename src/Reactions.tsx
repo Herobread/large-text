@@ -5,7 +5,6 @@ import { EMOJIS, type ColorTheme } from "./constants";
  * Generates true physics-based parabolic trajectory keyframes with:
  * - Upward ballistic impulse & random horizontal velocity vector
  * - Gravitational acceleration (curved apex & descent)
- * - Direction-correlated angular spin that decelerates with air resistance
  * - Snappy burst pop scale & graceful fade-out
  */
 function generatePhysicsKeyframes(
@@ -13,7 +12,6 @@ function generatePhysicsKeyframes(
   angleRad: number,
   gravity: number,
   durationSec: number,
-  totalSpinDeg: number,
   steps = 16
 ): Keyframe[] {
   let vx = Math.cos(angleRad) * speed;
@@ -49,11 +47,8 @@ function generatePhysicsKeyframes(
       opacity = Math.max(0, 1 - (t - 0.65) / 0.35);
     }
 
-    // Angular rotation decelerates naturally with air resistance
-    const rot = totalSpinDeg * (1 - Math.pow(1 - t, 1.4));
-
     keyframes.push({
-      transform: `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) scale(${scale.toFixed(2)}) rotate(${rot.toFixed(1)}deg)`,
+      transform: `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) scale(${scale.toFixed(2)})`,
       opacity: Number(opacity.toFixed(2)),
       offset: Number(t.toFixed(4)),
     });
@@ -113,11 +108,6 @@ export function Reactions({ theme }: { theme: ColorTheme }) {
     const durationSec = 1.25 + Math.random() * 0.3; // 1.25s - 1.55s
     const durationMs = durationSec * 1000;
 
-    // Spin direction matches horizontal throw velocity
-    const isThrowingRight = Math.cos(angleRad) >= 0;
-    const spinMagnitude = 180 + Math.random() * 200; // 180° to 380° rotation
-    const totalSpinDeg = isThrowingRight ? spinMagnitude : -spinMagnitude;
-
     // Launch jitter and sizing
     const jitterX = (Math.random() - 0.5) * 10;
     const jitterY = (Math.random() - 0.5) * 6;
@@ -158,7 +148,6 @@ export function Reactions({ theme }: { theme: ColorTheme }) {
       angleRad,
       gravity,
       durationSec,
-      totalSpinDeg,
       16
     );
 
