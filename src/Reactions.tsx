@@ -1,217 +1,288 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { EMOJIS, type ColorTheme } from "./constants";
 
-interface FontOption {
-  id: string;
-  name: string;
-  family: string;
-  weight: string;
-  lineHeight: number;
-  googleParam: string;
+/**
+ * Generates true physics-based parabolic trajectory keyframes with:
+ * - Upward ballistic impulse & random horizontal velocity vector
+ * - Gravitational acceleration (curved apex & descent)
+ * - Direction-correlated angular spin that decelerates with air resistance
+ * - Snappy burst pop scale & graceful fade-out
+ */
+function generatePhysicsKeyframes(
+  speed: number,
+  angleRad: number,
+  gravity: number,
+  durationSec: number,
+  totalSpinDeg: number,
+  steps = 16
+): Keyframe[] {
+  let vx = Math.cos(angleRad) * speed;
+  let vy = Math.sin(angleRad) * speed;
+  let x = 0;
+  let y = 0;
+  const dt = durationSec / steps;
+  const drag = 0.985;
+  const keyframes: Keyframe[] = [];
+
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+
+    // Organic scale curve: snappy burst pop (0.25 -> 1.35) -> gentle settlement -> soft exit
+    let scale: number;
+    if (t < 0.08) {
+      scale = 0.25 + (t / 0.08) * 1.1;
+    } else if (t < 0.22) {
+      scale = 1.35 - ((t - 0.08) / 0.14) * 0.32;
+    } else if (t < 0.65) {
+      scale = 1.03 - ((t - 0.22) / 0.43) * 0.08;
+    } else {
+      scale = 0.95 - ((t - 0.65) / 0.35) * 0.3;
+    }
+
+    // Smooth opacity curve: instant appearance -> solid visibility during flight -> graceful fade
+    let opacity: number;
+    if (t < 0.05) {
+      opacity = t / 0.05;
+    } else if (t < 0.65) {
+      opacity = 1;
+    } else {
+      opacity = Math.max(0, 1 - (t - 0.65) / 0.35);
+    }
+
+    // Angular rotation decelerates naturally with air resistance
+    const rot = totalSpinDeg * (1 - Math.pow(1 - t, 1.4));
+
+    keyframes.push({
+      transform: `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) scale(${scale.toFixed(2)}) rotate(${rot.toFixed(1)}deg)`,
+      opacity: Number(opacity.toFixed(2)),
+      offset: Number(t.toFixed(4)),
+    });
+
+    // Advance ballistic simulation step
+    x += vx * dt;
+    y += vy * dt;
+    vy += gravity * dt;
+    vx *= drag;
+  }
+
+  return keyframes;
 }
 
-interface ColorTheme {
-  id: string;
-  name: string;
-  bg: string;
-  text: string;
-  dot: string;
-}
-
-const FONTS: FontOption[] = [
-  {
-    id: "syne",
-    name: "Syne",
-    family: '"Syne", sans-serif',
-    weight: "800",
-    lineHeight: 1.05,
-    googleParam: "family=Syne:wght@800",
-  },
-  {
-    id: "italiana",
-    name: "Italiana",
-    family: '"Italiana", serif',
-    weight: "400",
-    lineHeight: 1.15,
-    googleParam: "family=Italiana",
-  },
-  {
-    id: "rock-salt",
-    name: "Rock Salt",
-    family: '"Rock Salt", cursive',
-    weight: "400",
-    lineHeight: 1.3,
-    googleParam: "family=Rock+Salt",
-  },
-  {
-    id: "fraunces",
-    name: "Fraunces",
-    family: '"Fraunces", serif',
-    weight: "900",
-    lineHeight: 1.05,
-    googleParam: "family=Fraunces:opsz,wght@9..144,900",
-  },
-  {
-    id: "inter",
-    name: "Inter",
-    family: '"Inter", sans-serif',
-    weight: "700",
-    lineHeight: 1.1,
-    googleParam: "family=Inter:wght@700",
-  },
-  {
-    id: "silkscreen",
-    name: "Silkscreen",
-    family: '"Silkscreen", monospace',
-    weight: "700",
-    lineHeight: 1.25,
-    googleParam: "family=Silkscreen:wght@700",
-  },
-];
-
-const THEMES: ColorTheme[] = [
-  {
-    id: "mono-dark",
-    name: "Obsidian",
-    bg: "#0c0c0e",
-    text: "#e6e6e8",
-    dot: "#27272a",
-  },
-  {
-    id: "sage",
-    name: "Muted Sage",
-    bg: "#131916",
-    text: "#d3ded7",
-    dot: "#2f3f38",
-  },
-  {
-    id: "navy",
-    name: "Deep Indigo",
-    bg: "#0f141d",
-    text: "#d4dbe8",
-    dot: "#2a3547",
-  },
-  {
-    id: "plum",
-    name: "Muted Plum",
-    bg: "#1a1318",
-    text: "#ded0da",
-    dot: "#3d2e38",
-  },
-  {
-    id: "ochre",
-    name: "Burnt Amber",
-    bg: "#171410",
-    text: "#e4dacd",
-    dot: "#42362b",
-  },
-  {
-    id: "paper",
-    name: "Warm Parchment",
-    bg: "#e8e5de",
-    text: "#21201d",
-    dot: "#cbc6bc",
-  },
-];
-
-const STORAGE_KEYS = {
-  TEXT: "app_text",
-  FONT_ID: "app_font_id",
-  THEME_ID: "app_theme_id",
-};
-
-const MAX_FONT_SIZE = 64;
-const EMOJIS = ["💀", "👀", "🔥", "😂", "❓", "👍"];
-
-function snapToScale(rawSize: number): number {
-  let step = 4;
-  if (rawSize > 48) step = 8;
-  else if (rawSize > 32) step = 6;
-  return Math.floor(rawSize / step) * step;
-}
-
-// --------------------------------------------------------
-// DROP-IN REACTIONS COMPONENT
-// --------------------------------------------------------
 export function Reactions({ theme }: { theme: ColorTheme }) {
-  const [overlay, setOverlay] = useState({ emoji: EMOJIS[0], show: false });
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-  const triggerReaction = (emoji: string) => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+  // Detect Mac platform for shortcut hint in tooltips
+  const isMac =
+    typeof navigator !== "undefined" &&
+    /Mac|iPhone|iPod|iPad/.test(navigator.platform || navigator.userAgent);
+  const modKeyLabel = isMac ? "⌘" : "Ctrl";
 
-    // Set to show
-    setOverlay({ emoji, show: true });
+  const triggerReaction = useCallback((index: number) => {
+    if (index < 0 || index >= EMOJIS.length) return;
 
-    // Auto fade-out after 1.5s
-    timeoutRef.current = setTimeout(() => {
-      setOverlay((prev) => ({ ...prev, show: false }));
-    }, 1500);
-  };
+    const emoji = EMOJIS[index];
+    const btn = buttonRefs.current[index];
+    const container = containerRef.current;
+    if (!container) return;
+
+    let startX = window.innerWidth / 2;
+    let startY = window.innerHeight - 47;
+
+    if (btn) {
+      const rect = btn.getBoundingClientRect();
+      startX = rect.left + rect.width / 2;
+      startY = rect.top + rect.height * 0.25;
+    } else {
+      const totalWidth = EMOJIS.length * 46 + (EMOJIS.length - 1) * 12;
+      const leftOffset = (window.innerWidth - totalWidth) / 2;
+      startX = leftOffset + index * 58 + 23;
+    }
+
+    // Ballistic physics parameters:
+    // Bias launch angle inwards toward screen center so outer buttons arc across the stage
+    const centerBias =
+      (index - (EMOJIS.length - 1) / 2) / ((EMOJIS.length - 1) / 2);
+    const baseAngleDeg = -90 - centerBias * 22;
+    const angleDeg = baseAngleDeg + (Math.random() - 0.5) * 60;
+    const angleRad = (angleDeg * Math.PI) / 180;
+
+    // Launch speed and gravitational pull
+    const speed = 700 + Math.random() * 220; // 700px/s - 920px/s
+    const gravity = 950 + Math.random() * 150; // 950 - 1100 px/s²
+    const durationSec = 1.25 + Math.random() * 0.3; // 1.25s - 1.55s
+    const durationMs = durationSec * 1000;
+
+    // Spin direction matches horizontal throw velocity
+    const isThrowingRight = Math.cos(angleRad) >= 0;
+    const spinMagnitude = 180 + Math.random() * 200; // 180° to 380° rotation
+    const totalSpinDeg = isThrowingRight ? spinMagnitude : -spinMagnitude;
+
+    // Launch jitter and sizing
+    const jitterX = (Math.random() - 0.5) * 10;
+    const jitterY = (Math.random() - 0.5) * 6;
+    const size = 42 + Math.random() * 8; // 42px - 50px
+
+    // Create the floating emoji particle
+    const el = document.createElement("div");
+    el.textContent = emoji;
+    Object.assign(el.style, {
+      position: "absolute",
+      left: `${startX + jitterX}px`,
+      top: `${startY + jitterY}px`,
+      width: "48px",
+      height: "48px",
+      marginLeft: "-24px",
+      marginTop: "-24px",
+      fontSize: `${Math.round(size)}px`,
+      lineHeight: "48px",
+      textAlign: "center",
+      pointerEvents: "none",
+      userSelect: "none",
+      willChange: "transform, opacity",
+      textShadow: "0 2px 8px rgba(0, 0, 0, 0.2)",
+      fontFamily:
+        '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif',
+    });
+
+    container.appendChild(el);
+
+    // Keep active DOM elements bounded to 60 for optimal memory & compositor performance
+    if (container.childElementCount > 60) {
+      container.firstElementChild?.remove();
+    }
+
+    // Generate sampled physics keyframes and execute on GPU compositor thread
+    const keyframes = generatePhysicsKeyframes(
+      speed,
+      angleRad,
+      gravity,
+      durationSec,
+      totalSpinDeg,
+      16
+    );
+
+    const animation = el.animate(keyframes, {
+      duration: durationMs,
+      fill: "forwards",
+    });
+
+    animation.onfinish = () => {
+      el.remove();
+    };
+
+    // Button icon squish & pop feedback
+    const icon = btn?.querySelector<HTMLElement>(".reaction-icon");
+    if (icon) {
+      icon.getAnimations().forEach((a) => a.cancel());
+      icon.animate(
+        [
+          { transform: "scale(1)", easing: "ease-out" },
+          {
+            transform: "scale(0.72) translateY(2px)",
+            offset: 0.25,
+            easing: "ease-out",
+          },
+          {
+            transform: "scale(1.22) translateY(-2px)",
+            offset: 0.6,
+            easing: "cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+          },
+          { transform: "scale(1) translateY(0)", offset: 1 },
+        ],
+        { duration: 200 }
+      );
+    }
+  }, []);
+
+  // Keyboard shortcut listener: Ctrl + 1..6, Cmd + 1..6, or Alt + 1..6
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const hasModifier = e.ctrlKey || e.metaKey || e.altKey;
+      if (!hasModifier) return;
+
+      let index = -1;
+
+      // Layout-independent detection
+      const digitCodeMatch = e.code.match(/^(?:Digit|Numpad)([1-6])$/);
+      if (digitCodeMatch) {
+        index = parseInt(digitCodeMatch[1], 10) - 1;
+      } else if (e.key >= "1" && e.key <= String(EMOJIS.length)) {
+        index = parseInt(e.key, 10) - 1;
+      }
+
+      if (index >= 0 && index < EMOJIS.length) {
+        e.preventDefault();
+        e.stopPropagation();
+        triggerReaction(index);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, { capture: true });
+    };
+  }, [triggerReaction]);
+
+  // Clean up any remaining floating particles when unmounting
+  useEffect(() => {
+    const container = containerRef.current;
+    return () => {
+      if (container) {
+        container.innerHTML = "";
+      }
+    };
+  }, []);
 
   return (
     <>
-      {/* Inject custom hover styles dynamically based on the current theme */}
-      <style>{`
-        .reaction-btn {
-          opacity: 0.35;
-          transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
-        .reaction-btn:hover {
-          opacity: 1 !important;
-          background-color: ${theme.text}18 !important;
-          transform: translateY(-4px) scale(1.05);
-        }
-        .reaction-btn:active {
-          transform: translateY(0px) scale(0.95);
-        }
-      `}</style>
-
-      {/* 128px Center Overlay (Never Unmounts) */}
+      {/* Floating particles portal container (zero React re-renders on spam) */}
       <div
+        ref={containerRef}
         style={{
           position: "fixed",
-          top: "50%",
-          left: "50%",
-          fontSize: "128px",
+          inset: 0,
           pointerEvents: "none",
-          zIndex: 50,
-          // The magic sauce: Pop in with a spring, fade out gracefully
-          transform: overlay.show
-            ? "translate(-50%, -50%) scale(1) translateY(0px)"
-            : "translate(-50%, -50%) scale(0.4) translateY(40px)",
-          opacity: overlay.show ? 1 : 0,
-          filter: overlay.show
-            ? "drop-shadow(0 20px 30px rgba(0,0,0,0.3))"
-            : "drop-shadow(0 0px 0px rgba(0,0,0,0))",
-          transition: overlay.show
-            ? "transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s ease-out, filter 0.4s ease-out"
-            : "transform 0.6s ease-in, opacity 0.5s ease-in, filter 0.6s ease-in",
+          zIndex: 60,
+          overflow: "hidden",
         }}
-      >
-        {overlay.emoji}
-      </div>
+      />
 
       {/* Bottom Buttons Bar */}
       <aside
-        style={{
-          position: "fixed",
-          bottom: "24px",
-          left: "50%",
-          transform: "translateX(-50%)",
-          display: "flex",
-          gap: "12px",
-          zIndex: 10,
-        }}
+        style={
+          {
+            position: "fixed",
+            bottom: "24px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            display: "flex",
+            gap: "12px",
+            zIndex: 20,
+            "--reaction-hover-bg": `${theme.text}18`,
+          } as React.CSSProperties
+        }
       >
-        {EMOJIS.map((emoji) => (
+        {EMOJIS.map((emoji, index) => (
           <button
             key={emoji}
+            ref={(el) => {
+              buttonRefs.current[index] = el;
+            }}
             className="reaction-btn"
+            onMouseDown={(e) => {
+              // Prevent losing focus from the central textarea
+              e.preventDefault();
+            }}
             onClick={(e) => {
               e.preventDefault();
-              triggerReaction(emoji);
+              e.stopPropagation();
+              triggerReaction(index);
             }}
+            title={`React with ${emoji} (${modKeyLabel}+${index + 1} or Alt+${index + 1})`}
+            aria-label={`Reaction ${emoji}, shortcut ${modKeyLabel}+${index + 1}`}
             style={{
+              position: "relative",
               width: "46px",
               height: "46px",
               borderRadius: "12px",
@@ -223,314 +294,29 @@ export function Reactions({ theme }: { theme: ColorTheme }) {
               justifyContent: "center",
               cursor: "pointer",
               fontSize: "22px",
+              userSelect: "none",
             }}
           >
-            {emoji}
+            <span
+              className="reaction-icon"
+              style={{
+                display: "inline-block",
+                transform: "translateY(-1px)",
+                pointerEvents: "none",
+                willChange: "transform",
+              }}
+            >
+              {emoji}
+            </span>
+            <span
+              className="reaction-shortcut-badge"
+              style={{ color: theme.text }}
+            >
+              {index + 1}
+            </span>
           </button>
         ))}
       </aside>
     </>
-  );
-}
-// --------------------------------------------------------
-
-export default function App() {
-  const [text, setText] = useState<string>(() => {
-    const hash = window.location.hash.slice(1);
-    if (hash) {
-      try {
-        return decodeURIComponent(hash);
-      } catch {
-        return "";
-      }
-    }
-    return localStorage.getItem(STORAGE_KEYS.TEXT) ?? "";
-  });
-
-  const [font, setFont] = useState<FontOption>(() => {
-    const savedFontId = localStorage.getItem(STORAGE_KEYS.FONT_ID);
-    return FONTS.find((f) => f.id === savedFontId) ?? FONTS[0];
-  });
-
-  const [theme, setTheme] = useState<ColorTheme>(() => {
-    const savedThemeId = localStorage.getItem(STORAGE_KEYS.THEME_ID);
-    return THEMES.find((t) => t.id === savedThemeId) ?? THEMES[0];
-  });
-
-  const [fontSize, setFontSize] = useState<number>(MAX_FONT_SIZE);
-
-  const containerRef = useRef<HTMLDivElement>(null);
-  const textRef = useRef<HTMLTextAreaElement>(null);
-
-  // Inject Google Fonts and zero-out body/root margins
-  useEffect(() => {
-    const fontParams = FONTS.map((f) => f.googleParam).join("&");
-    const fontUrl = `https://fonts.googleapis.com/css2?${fontParams}&display=swap`;
-
-    let link = document.querySelector<HTMLLinkElement>(
-      'link[data-app-fonts="true"]',
-    );
-    if (!link) {
-      link = document.createElement("link");
-      link.rel = "stylesheet";
-      link.dataset.appFonts = "true";
-      link.href = fontUrl;
-      document.head.appendChild(link);
-    }
-
-    let style = document.querySelector<HTMLStyleElement>(
-      'style[data-app-reset="true"]',
-    );
-    if (!style) {
-      style = document.createElement("style");
-      style.dataset.appReset = "true";
-      style.textContent = `
-        *, *::before, *::after { box-sizing: border-box; }
-        html, body, #root {
-          margin: 0;
-          padding: 0;
-          width: 100%;
-          height: 100%;
-          overflow: hidden;
-        }
-      `;
-      document.head.appendChild(style);
-    }
-  }, []);
-
-  // Persist selections and text to localStorage & URL hash
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.FONT_ID, font.id);
-  }, [font.id]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.THEME_ID, theme.id);
-  }, [theme.id]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.TEXT, text);
-    if (text) {
-      window.history.replaceState(null, "", `#${encodeURIComponent(text)}`);
-    } else {
-      window.history.replaceState(
-        null,
-        "",
-        window.location.pathname + window.location.search,
-      );
-    }
-  }, [text]);
-
-  // Fit font size up to 64px based on available container bounds
-  useLayoutEffect(() => {
-    const calculateFontSize = () => {
-      const displayText = text.trim() || "TYPE...";
-
-      if (!containerRef.current) {
-        setFontSize(MAX_FONT_SIZE);
-        return;
-      }
-
-      const { clientWidth, clientHeight } = containerRef.current;
-      const paddingX = 160;
-      const paddingY = 140; // Increased to ensure text doesn't overlap the new bottom buttons
-
-      const availableWidth = clientWidth - paddingX;
-      const availableHeight = clientHeight - paddingY;
-
-      if (availableWidth <= 0 || availableHeight <= 0) return;
-
-      let min = 14;
-      let max = MAX_FONT_SIZE;
-      let rawBest = min;
-
-      const dummy = document.createElement("div");
-      dummy.style.position = "absolute";
-      dummy.style.visibility = "hidden";
-      dummy.style.whiteSpace = "pre-wrap";
-      dummy.style.wordBreak = "break-word";
-      dummy.style.fontFamily = font.family;
-      dummy.style.fontWeight = font.weight;
-      dummy.style.lineHeight = `${font.lineHeight}`;
-      dummy.style.width = `${availableWidth}px`;
-      dummy.innerText = displayText;
-      document.body.appendChild(dummy);
-
-      while (min <= max) {
-        const mid = Math.floor((min + max) / 2);
-        dummy.style.fontSize = `${mid}px`;
-
-        if (
-          dummy.offsetHeight <= availableHeight &&
-          dummy.offsetWidth <= availableWidth
-        ) {
-          rawBest = mid;
-          min = mid + 1;
-        } else {
-          max = mid - 1;
-        }
-      }
-
-      document.body.removeChild(dummy);
-      setFontSize(Math.min(MAX_FONT_SIZE, Math.max(14, snapToScale(rawBest))));
-    };
-
-    calculateFontSize();
-    window.addEventListener("resize", calculateFontSize);
-    return () => window.removeEventListener("resize", calculateFontSize);
-  }, [text, font]);
-
-  return (
-    <div
-      style={{
-        position: "relative",
-        width: "100vw",
-        height: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: theme.bg,
-        color: theme.text,
-        transition: "background-color 0.25s ease, color 0.25s ease",
-        userSelect: "none",
-      }}
-    >
-      {/* Drop-in Reactions Component */}
-      <Reactions theme={theme} />
-
-      {/* Muted Color Theme Palette */}
-      <aside
-        style={{
-          position: "fixed",
-          left: "24px",
-          top: "50%",
-          transform: "translateY(-50%)",
-          zIndex: 10,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: "14px",
-        }}
-      >
-        {THEMES.map((t) => {
-          const isSelected = t.id === theme.id;
-          return (
-            <button
-              key={t.id}
-              onClick={() => {
-                setTheme(t);
-                textRef.current?.focus();
-              }}
-              title={t.name}
-              style={{
-                width: "20px",
-                height: "20px",
-                borderRadius: "50%",
-                backgroundColor: t.dot,
-                border: isSelected
-                  ? `2px solid ${theme.text}`
-                  : "2px solid transparent",
-                outline: isSelected ? `2px solid ${t.dot}` : "none",
-                outlineOffset: "2px",
-                cursor: "pointer",
-                opacity: isSelected ? 1 : 0.45,
-                transition: "all 0.15s ease",
-                padding: 0,
-              }}
-            />
-          );
-        })}
-      </aside>
-
-      {/* Font Family Picker */}
-      <aside
-        style={{
-          position: "fixed",
-          right: "24px",
-          top: "50%",
-          transform: "translateY(-50%)",
-          zIndex: 10,
-          display: "flex",
-          flexDirection: "column",
-          gap: "12px",
-        }}
-      >
-        {FONTS.map((item) => {
-          const isSelected = item.id === font.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => {
-                setFont(item);
-                textRef.current?.focus();
-              }}
-              title={item.name}
-              style={{
-                width: "46px",
-                height: "46px",
-                borderRadius: "12px",
-                border: isSelected
-                  ? `2px solid ${theme.text}`
-                  : `1px solid ${theme.text}26`,
-                backgroundColor: isSelected ? `${theme.text}18` : "transparent",
-                color: theme.text,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                fontFamily: item.family,
-                fontWeight: item.weight,
-                fontSize: "19px",
-                lineHeight: 1,
-                opacity: isSelected ? 1 : 0.35,
-                transition: "all 0.15s ease",
-              }}
-            >
-              Aa
-            </button>
-          );
-        })}
-      </aside>
-
-      {/* Main Text Area */}
-      <main
-        ref={containerRef}
-        onClick={() => textRef.current?.focus()}
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "48px",
-          cursor: "text",
-        }}
-      >
-        <textarea
-          ref={textRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="TYPE..."
-          autoFocus
-          spellCheck={false}
-          style={{
-            width: "100%",
-            height: "100%",
-            resize: "none",
-            border: "none",
-            outline: "none",
-            backgroundColor: "transparent",
-            color: theme.text,
-            fontSize: `${fontSize}px`,
-            fontFamily: font.family,
-            fontWeight: font.weight,
-            textAlign: "center",
-            lineHeight: font.lineHeight,
-            overflow: "hidden",
-            userSelect: "text",
-            transition: "color 0.25s ease",
-          }}
-        />
-      </main>
-    </div>
   );
 }

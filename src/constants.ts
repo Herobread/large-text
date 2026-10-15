@@ -23,6 +23,8 @@ export const STORAGE_KEYS = {
 
 export const MAX_FONT_SIZE = 64;
 
+export const EMOJIS = ["🆗", "💀", "👀", "🔥", "😂", "❓", "👍"] as const;
+
 export const snapToScale = (rawSize: number): number => {
   let step = 4;
   if (rawSize > 48) step = 8;
