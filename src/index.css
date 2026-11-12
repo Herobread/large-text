@@ -28,18 +28,18 @@ body,
 .reaction-shortcut-badge {
   position: absolute;
   bottom: 2px;
-  right: 4px;
-  font-size: 9px;
+  right: 5px;
+  font-size: 13px;
   font-family: inherit;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1;
-  opacity: 0.35;
+  opacity: 0.55;
   pointer-events: none;
   transition: opacity 0.15s ease;
 }
 
 .reaction-btn:hover .reaction-shortcut-badge {
-  opacity: 0.85 !important;
+  opacity: 1 !important;
 }
 
 /* Emotion / Rage Shaking Typography */

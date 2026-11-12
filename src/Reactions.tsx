@@ -184,16 +184,17 @@ export function Reactions({ theme }: { theme: ColorTheme }) {
     }
   }, []);
 
-  // Keyboard shortcut listener: Ctrl + 1..6, Cmd + 1..6, or Alt + 1..6
+  // Keyboard shortcut listener: Ctrl + 1..N or Cmd + 1..N
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const hasModifier = e.ctrlKey || e.metaKey || e.altKey;
+      if (e.altKey) return;
+      const hasModifier = e.ctrlKey || e.metaKey;
       if (!hasModifier) return;
 
       let index = -1;
 
       // Layout-independent detection
-      const digitCodeMatch = e.code.match(/^(?:Digit|Numpad)([1-6])$/);
+      const digitCodeMatch = e.code.match(/^(?:Digit|Numpad)([1-9])$/);
       if (digitCodeMatch) {
         index = parseInt(digitCodeMatch[1], 10) - 1;
       } else if (e.key >= "1" && e.key <= String(EMOJIS.length)) {
@@ -268,7 +269,7 @@ export function Reactions({ theme }: { theme: ColorTheme }) {
               e.stopPropagation();
               triggerReaction(index);
             }}
-            title={`React with ${emoji} (${modKeyLabel}+${index + 1} or Alt+${index + 1})`}
+            title={`React with ${emoji} (${modKeyLabel}+${index + 1})`}
             aria-label={`Reaction ${emoji}, shortcut ${modKeyLabel}+${index + 1}`}
             style={{
               position: "relative",
