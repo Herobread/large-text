@@ -11,6 +11,88 @@ import { Reactions } from "./Reactions";
 import { FontSelector, ThemeSelector } from "./Selectors";
 import { useAutoFontSize } from "./useAutoFontSize";
 
+const isMac =
+  typeof navigator !== "undefined" &&
+  /Mac|iPhone|iPod|iPad/.test(navigator.platform || navigator.userAgent);
+
+interface WordDeleteRange {
+  startIndex: number;
+  endIndex: number;
+  deletedText: string;
+}
+
+function findWordDeleteRange(
+  text: string,
+  selectionStart: number,
+  selectionEnd: number
+): WordDeleteRange | null {
+  if (selectionStart !== selectionEnd) {
+    const start = Math.min(selectionStart, selectionEnd);
+    const end = Math.max(selectionStart, selectionEnd);
+    return {
+      startIndex: start,
+      endIndex: end,
+      deletedText: text.slice(start, end),
+    };
+  }
+
+  const cursorPos = selectionStart;
+  const before = text.slice(0, cursorPos);
+  if (!before) return null;
+
+  if (typeof Intl !== "undefined" && Intl.Segmenter) {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: "word" });
+    const segments = Array.from(segmenter.segment(before));
+    if (segments.length === 0) return null;
+
+    const lastIdx = segments.length - 1;
+    const lastSeg = segments[lastIdx];
+
+    if (/^\s+$/.test(lastSeg.segment)) {
+      if (segments.length === 1) {
+        return {
+          startIndex: 0,
+          endIndex: cursorPos,
+          deletedText: before,
+        };
+      }
+      const prevSeg = segments[lastIdx - 1];
+      return {
+        startIndex: prevSeg.index,
+        endIndex: cursorPos,
+        deletedText: text.slice(prevSeg.index, cursorPos),
+      };
+    }
+
+    return {
+      startIndex: lastSeg.index,
+      endIndex: cursorPos,
+      deletedText: text.slice(lastSeg.index, cursorPos),
+    };
+  }
+
+  const match = before.match(/((?:[\p{L}\p{N}_]+|[^\s\p{L}\p{N}]+)?\s*)$/u);
+  if (match && match[1].length > 0) {
+    const startIndex = cursorPos - match[1].length;
+    return {
+      startIndex,
+      endIndex: cursorPos,
+      deletedText: match[1],
+    };
+  }
+
+  return {
+    startIndex: Math.max(0, cursorPos - 1),
+    endIndex: cursorPos,
+    deletedText: text.slice(Math.max(0, cursorPos - 1), cursorPos),
+  };
+}
+
+interface ActiveDelete {
+  prefix: string;
+  suffix: string;
+  startIndex: number;
+}
 
 export default function App() {
   const [text, setText] = useState<string>(() => {
@@ -52,9 +134,10 @@ export default function App() {
   const isRage = isAllCaps || hasMultipleExclamations;
   const isWhisper = !isRage && /(\.{3,}|…)$/.test(cleanText);
 
-  // Rapid-Fire Backspace Deletion Effect on Shift + Delete / Shift + Backspace
+  // Rapid-Fire Word Backspace Deletion Effect on Ctrl + Backspace (or Alt + Backspace on Mac)
   const [isRapidDeleting, setIsRapidDeleting] = useState(false);
   const isDeletingRef = useRef(false);
+  const activeDeleteRef = useRef<ActiveDelete | null>(null);
   const deleteAnimIdRef = useRef<number | null>(null);
   const dissolveContainerRef = useRef<HTMLDivElement>(null);
   const measureMirrorRef = useRef<HTMLDivElement>(null);
@@ -65,6 +148,7 @@ export default function App() {
       deleteAnimIdRef.current = null;
     }
     isDeletingRef.current = false;
+    activeDeleteRef.current = null;
     setIsRapidDeleting(false);
     setFrozenFontSize(null);
     if (measureMirrorRef.current) {
@@ -174,35 +258,59 @@ export default function App() {
   );
 
   const startRapidDelete = useCallback(() => {
-    // If already deleting, pressing the shortcut again acts as an instant force-nuke
-    if (isDeletingRef.current) {
-      cancelRapidDelete();
-      setText("");
-      if (textRef.current) {
-        textRef.current.value = "";
-        textRef.current.focus();
+    // If a deletion is already in progress, immediately finalize it so the next word deletes instantly
+    if (isDeletingRef.current && activeDeleteRef.current) {
+      const prev = activeDeleteRef.current;
+      if (deleteAnimIdRef.current !== null) {
+        cancelAnimationFrame(deleteAnimIdRef.current);
+        deleteAnimIdRef.current = null;
       }
-      return;
+      const committedText = prev.prefix + prev.suffix;
+      setText(committedText);
+      if (textRef.current) {
+        textRef.current.value = committedText;
+        textRef.current.setSelectionRange(prev.startIndex, prev.startIndex);
+      }
+      activeDeleteRef.current = null;
+      isDeletingRef.current = false;
     }
 
     const currentVal = textRef.current?.value ?? text;
-    if (!currentVal.trim()) return;
+    if (!currentVal) return;
 
-    // Use Array.from for clean Unicode & emoji grapheme preservation
-    const graphemes = Array.from(currentVal);
+    const selectionStart = textRef.current?.selectionStart ?? currentVal.length;
+    const selectionEnd = textRef.current?.selectionEnd ?? currentVal.length;
+
+    const targetRange = findWordDeleteRange(currentVal, selectionStart, selectionEnd);
+    if (!targetRange || targetRange.startIndex === targetRange.endIndex) return;
+
+    const { startIndex, endIndex, deletedText } = targetRange;
+    if (!deletedText) return;
+
+    const prefix = currentVal.slice(0, startIndex);
+    const suffix = currentVal.slice(endIndex);
+
+    let graphemes: string[] = [];
+    if (typeof Intl !== "undefined" && Intl.Segmenter) {
+      const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+      graphemes = Array.from(graphemeSegmenter.segment(deletedText)).map((s) => s.segment);
+    } else {
+      graphemes = Array.from(deletedText);
+    }
     if (graphemes.length === 0) return;
 
     isDeletingRef.current = true;
+    activeDeleteRef.current = { prefix, suffix, startIndex };
     setIsRapidDeleting(true);
     setFrozenFontSize(autoFontSize);
 
     const totalChars = graphemes.length;
-    // Dynamic rapid-fire pacing: 160ms to 540ms total duration
-    const targetDurationMs = Math.min(540, Math.max(160, totalChars * 26));
+    // Dynamic rapid-fire pacing: 120ms to 360ms based on word length
+    const targetDurationMs = Math.min(360, Math.max(120, totalChars * 26));
 
     const startTime = performance.now();
     let alreadyDeleted = 0;
-    let currentGraphemes = [...graphemes];
+    let currentWordGraphemes = [...graphemes];
 
     const step = (now: number) => {
       if (!isDeletingRef.current) return;
@@ -222,17 +330,22 @@ export default function App() {
       if (charsToDelete > 0) {
         alreadyDeleted += charsToDelete;
 
-        const deletedChars = currentGraphemes.slice(
-          Math.max(0, currentGraphemes.length - charsToDelete)
+        const deletedChars = currentWordGraphemes.slice(
+          Math.max(0, currentWordGraphemes.length - charsToDelete)
         );
-        const prefix = currentGraphemes
-          .slice(0, Math.max(0, currentGraphemes.length - charsToDelete))
-          .join("");
+        const remainingWordGraphemes = currentWordGraphemes.slice(
+          0,
+          Math.max(0, currentWordGraphemes.length - charsToDelete)
+        );
+        const remainingWordText = remainingWordGraphemes.join("");
 
         // Precision in-DOM measurement mirror to dissolve each letter in place
         const mirror = measureMirrorRef.current;
         if (mirror) {
-          mirror.textContent = prefix;
+          mirror.innerHTML = "";
+          if (prefix || remainingWordText) {
+            mirror.appendChild(document.createTextNode(prefix + remainingWordText));
+          }
           const spans: HTMLSpanElement[] = [];
           for (const ch of deletedChars) {
             const span = document.createElement("span");
@@ -240,6 +353,9 @@ export default function App() {
             span.style.display = "inline";
             mirror.appendChild(span);
             spans.push(span);
+          }
+          if (suffix) {
+            mirror.appendChild(document.createTextNode(suffix));
           }
 
           for (let i = 0; i < spans.length; i++) {
@@ -249,19 +365,17 @@ export default function App() {
           }
         }
 
-        currentGraphemes = currentGraphemes.slice(
-          0,
-          Math.max(0, currentGraphemes.length - charsToDelete)
-        );
-        const nextText = currentGraphemes.join("");
+        currentWordGraphemes = remainingWordGraphemes;
+        const nextText = prefix + remainingWordText + suffix;
+        const newCursorPos = prefix.length + remainingWordText.length;
 
         setText(nextText);
         if (textRef.current) {
           textRef.current.value = nextText;
-          textRef.current.setSelectionRange(nextText.length, nextText.length);
+          textRef.current.setSelectionRange(newCursorPos, newCursorPos);
         }
 
-        if (alreadyDeleted >= totalChars || currentGraphemes.length === 0) {
+        if (alreadyDeleted >= totalChars || currentWordGraphemes.length === 0) {
           cancelRapidDelete();
           textRef.current?.focus();
           return;
@@ -278,32 +392,36 @@ export default function App() {
     deleteAnimIdRef.current = requestAnimationFrame(step);
   }, [autoFontSize, cancelRapidDelete, dissolveLetter, text]);
 
-  // Shortcut handler: Shift + Delete or Shift + Backspace
+  // Shortcut handler: Ctrl + Backspace (or Alt + Backspace on macOS) to erase one word
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement> | KeyboardEvent) => {
-      const isShiftDelete =
-        e.shiftKey &&
-        (e.key === "Delete" ||
-          e.code === "Delete" ||
-          e.key === "Backspace" ||
-          e.code === "Backspace" ||
-          e.code === "NumpadDecimal");
+      const isWordDelete =
+        (e.key === "Backspace" || e.code === "Backspace") &&
+        (e.ctrlKey || (isMac && e.altKey));
 
-      if (isShiftDelete) {
+      if (isWordDelete) {
         e.preventDefault();
         e.stopPropagation();
         startRapidDelete();
         return;
       }
 
-      // If user starts typing or presses another key while rapid backspacing, interrupt immediately
+      // If user starts typing or presses another key while word deleting, commit and interrupt
       if (
         isDeletingRef.current &&
-        !e.shiftKey &&
         !e.ctrlKey &&
         !e.altKey &&
         !e.metaKey
       ) {
+        if (activeDeleteRef.current) {
+          const prev = activeDeleteRef.current;
+          const finalPrevText = prev.prefix + prev.suffix;
+          setText(finalPrevText);
+          if (textRef.current) {
+            textRef.current.value = finalPrevText;
+            textRef.current.setSelectionRange(prev.startIndex, prev.startIndex);
+          }
+        }
         cancelRapidDelete();
       }
     },
