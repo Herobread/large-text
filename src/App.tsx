@@ -302,11 +302,12 @@ export default function App() {
     isDeletingRef.current = true;
     activeDeleteRef.current = { prefix, suffix, startIndex };
     setIsRapidDeleting(true);
+    setHasSelection(false);
     setFrozenFontSize(autoFontSize);
 
     const totalChars = graphemes.length;
-    // Dynamic rapid-fire pacing: 120ms to 360ms based on word length
-    const targetDurationMs = Math.min(360, Math.max(120, totalChars * 26));
+    // Dynamic rapid-fire pacing: 120ms to 540ms based on character count
+    const targetDurationMs = Math.min(540, Math.max(120, totalChars * 24));
 
     const startTime = performance.now();
     let alreadyDeleted = 0;
@@ -392,14 +393,23 @@ export default function App() {
     deleteAnimIdRef.current = requestAnimationFrame(step);
   }, [autoFontSize, cancelRapidDelete, dissolveLetter, text]);
 
-  // Shortcut handler: Ctrl + Backspace (or Alt + Backspace on macOS) to erase one word
+  // Shortcut handler: Ctrl + Backspace (word delete) or Backspace/Delete with active selection (e.g. Ctrl + A -> Backspace)
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement> | KeyboardEvent) => {
-      const isWordDelete =
-        (e.key === "Backspace" || e.code === "Backspace") &&
-        (e.ctrlKey || (isMac && e.altKey));
+      const isBackspace = e.key === "Backspace" || e.code === "Backspace";
+      const isDelete = e.key === "Delete" || e.code === "Delete";
 
-      if (isWordDelete) {
+      const hasActiveSelection =
+        textRef.current != null &&
+        textRef.current.selectionStart !== textRef.current.selectionEnd;
+
+      const isCtrlBackspace =
+        isBackspace && (e.ctrlKey || (isMac && e.altKey));
+
+      const isSelectionDelete =
+        (isBackspace || isDelete) && hasActiveSelection;
+
+      if (isCtrlBackspace || isSelectionDelete) {
         e.preventDefault();
         e.stopPropagation();
         startRapidDelete();
