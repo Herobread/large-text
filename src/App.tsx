@@ -42,12 +42,13 @@ export default function App() {
   // - Whisper / Calm: ends with ellipsis "..." or "…"
   const cleanText = text.trim();
   const hasMultipleExclamations = /!{2,}|\?!|!\?/.test(cleanText);
-  const hasLetters = /[a-zA-Z]/.test(cleanText);
+  const hasUppercase = /\p{Lu}/u.test(cleanText);
+  const hasLowercase = /\p{Ll}/u.test(cleanText);
   const isAllCaps =
-    hasLetters &&
+    hasUppercase &&
+    !hasLowercase &&
     cleanText.length >= 2 &&
-    cleanText === cleanText.toUpperCase() &&
-    !/[a-z]/.test(cleanText);
+    cleanText === cleanText.toUpperCase();
   const isRage = isAllCaps || hasMultipleExclamations;
   const isWhisper = !isRage && /(\.{3,}|…)$/.test(cleanText);
 
