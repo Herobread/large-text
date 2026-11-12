@@ -104,3 +104,16 @@ body,
   color: transparent !important;
 }
 
+/* Telegram-style Emoji Autocomplete Popover */
+@keyframes emojiPopoverIn {
+  from {
+    opacity: 0;
+    transform: var(--popover-base-transform, translateY(0)) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: var(--popover-base-transform, translateY(0)) scale(1);
+  }
+}
+
+

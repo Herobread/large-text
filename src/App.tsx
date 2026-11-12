@@ -10,6 +10,27 @@ import {
 import { Reactions } from "./Reactions";
 import { FontSelector, ThemeSelector } from "./Selectors";
 import { useAutoFontSize } from "./useAutoFontSize";
+import { EmojiAutocomplete } from "./EmojiAutocomplete";
+import {
+  findEmojiByShortcode,
+  searchEmojis,
+  type EmojiEntry,
+} from "./emojiData";
+
+interface EmojiTriggerState {
+  query: string;
+  colonIndex: number;
+  cursor: number;
+}
+
+function getEmojiTrigger(val: string, cursor: number): EmojiTriggerState | null {
+  const before = val.slice(0, cursor);
+  const match = before.match(/(?:^|\s):([a-zA-Z0-9_а-яА-ЯіїєґІЇЄҐ+!-]*)$/u);
+  if (!match) return null;
+  const query = match[1];
+  const colonIndex = cursor - query.length - 1;
+  return { query, colonIndex, cursor };
+}
 
 interface WordDeleteRange {
   startIndex: number;
@@ -151,6 +172,89 @@ export default function App() {
       measureMirrorRef.current.textContent = "";
     }
   }, []);
+
+  // Telegram-style :emoji autocomplete state & positioning
+  const [emojiTrigger, setEmojiTrigger] = useState<EmojiTriggerState | null>(null);
+  const [emojiSuggestions, setEmojiSuggestions] = useState<EmojiEntry[]>([]);
+  const [selectedEmojiIndex, setSelectedEmojiIndex] = useState(0);
+  const [emojiPopoverPosition, setEmojiPopoverPosition] = useState<{
+    x: number;
+    y: number;
+    placeAbove: boolean;
+  } | null>(null);
+
+  const updateEmojiPopoverPosition = useCallback(
+    (colonIndex: number, currentText?: string) => {
+      const mirror = measureMirrorRef.current;
+      const textarea = textRef.current;
+      if (!mirror || !textarea) return;
+
+      const fullText = currentText ?? textarea.value;
+      const beforeText = fullText.slice(0, colonIndex);
+
+      mirror.innerHTML = "";
+      if (beforeText) {
+        mirror.appendChild(document.createTextNode(beforeText));
+      }
+      const marker = document.createElement("span");
+      marker.textContent = ":";
+      marker.style.display = "inline";
+      mirror.appendChild(marker);
+
+      const rect = marker.getBoundingClientRect();
+      mirror.innerHTML = "";
+
+      if (rect.width === 0 && rect.height === 0 && rect.top === 0 && rect.left === 0) {
+        const tr = textarea.getBoundingClientRect();
+        setEmojiPopoverPosition({
+          x: tr.left + 24,
+          y: tr.top + 60,
+          placeAbove: false,
+        });
+        return;
+      }
+
+      const popupHeight = 240;
+      const placeAbove = rect.top - popupHeight - 16 > 10;
+      const y = placeAbove ? rect.top - 8 : rect.bottom + 8;
+      const x = Math.max(16, Math.min(window.innerWidth - 300, rect.left - 8));
+
+      setEmojiPopoverPosition({ x, y, placeAbove });
+    },
+    []
+  );
+
+  const insertEmoji = useCallback(
+    (chosenEmoji: string) => {
+      const trigger = emojiTrigger;
+      const textarea = textRef.current;
+      if (!trigger || !textarea) return;
+
+      const val = textarea.value;
+      const before = val.slice(0, trigger.colonIndex);
+      const after = val.slice(trigger.cursor);
+      const replacement = `${chosenEmoji} `;
+      const nextVal = `${before}${replacement}${after}`;
+      const nextCursor = before.length + replacement.length;
+
+      setText(nextVal);
+      textarea.value = nextVal;
+      textarea.setSelectionRange(nextCursor, nextCursor);
+      textarea.focus();
+
+      setEmojiTrigger(null);
+      setEmojiSuggestions([]);
+      setSelectedEmojiIndex(0);
+      setEmojiPopoverPosition(null);
+    },
+    [emojiTrigger]
+  );
+
+  useEffect(() => {
+    if (emojiTrigger) {
+      updateEmojiPopoverPosition(emojiTrigger.colonIndex);
+    }
+  }, [fontSize, emojiTrigger, updateEmojiPopoverPosition]);
 
   useEffect(() => {
     const dissolveContainer = dissolveContainerRef.current;
@@ -392,6 +496,41 @@ export default function App() {
   // Shortcut handler: Backspace/Delete with active selection (e.g. Ctrl + A -> Backspace) or Ctrl + X (Cut)
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement> | KeyboardEvent) => {
+      // Telegram-style :emoji autocomplete navigation & selection
+      if (emojiTrigger && emojiSuggestions.length > 0) {
+        if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+          e.preventDefault();
+          e.stopPropagation();
+          setSelectedEmojiIndex((prev) => (prev + 1) % emojiSuggestions.length);
+          return;
+        }
+        if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+          e.preventDefault();
+          e.stopPropagation();
+          setSelectedEmojiIndex(
+            (prev) => (prev - 1 + emojiSuggestions.length) % emojiSuggestions.length
+          );
+          return;
+        }
+        if (e.key === "Enter" || e.key === "Tab") {
+          e.preventDefault();
+          e.stopPropagation();
+          const chosen = emojiSuggestions[selectedEmojiIndex];
+          if (chosen) {
+            insertEmoji(chosen.emoji);
+          }
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          setEmojiTrigger(null);
+          setEmojiSuggestions([]);
+          setEmojiPopoverPosition(null);
+          return;
+        }
+      }
+
       const isBackspace = e.key === "Backspace" || e.code === "Backspace";
       const isDelete = e.key === "Delete" || e.code === "Delete";
       const isCutKey =
@@ -443,7 +582,14 @@ export default function App() {
         cancelRapidDelete();
       }
     },
-    [cancelRapidDelete, startRapidDelete]
+    [
+      cancelRapidDelete,
+      emojiSuggestions,
+      emojiTrigger,
+      insertEmoji,
+      selectedEmojiIndex,
+      startRapidDelete,
+    ]
   );
 
   const handleCut = useCallback(
@@ -606,6 +752,18 @@ export default function App() {
       >
         <Reactions theme={theme} />
 
+        {emojiTrigger && emojiSuggestions.length > 0 && (
+          <EmojiAutocomplete
+            suggestions={emojiSuggestions}
+            selectedIndex={selectedEmojiIndex}
+            query={emojiTrigger.query}
+            position={emojiPopoverPosition}
+            theme={theme}
+            onSelect={insertEmoji}
+            onHoverIndex={setSelectedEmojiIndex}
+          />
+        )}
+
         {/* TEXT STAGE (Applies Rage Vibration & Whisper Shimmer) */}
         <div
           className={`text-stage ${!isRapidDeleting && isRage ? "text-rage" : !isRapidDeleting && isWhisper ? "text-whisper" : ""}`}
@@ -642,12 +800,80 @@ export default function App() {
               if (isDeletingRef.current) {
                 cancelRapidDelete();
               }
-              setText(e.target.value);
+              const nextVal = e.target.value;
+              const cursor = e.target.selectionStart;
+
+              // Check if exact shortcode was just closed, e.g. :fire:
+              const beforeCursor = nextVal.slice(0, cursor);
+              const exactMatch = beforeCursor.match(
+                /(?:^|\s):([a-zA-Z0-9_а-яА-ЯіїєґІЇЄҐ+!-]+):$/u
+              );
+
+              if (exactMatch) {
+                const shortcode = exactMatch[1];
+                const found = findEmojiByShortcode(shortcode);
+                if (found) {
+                  const colonStart = cursor - shortcode.length - 2;
+                  const before = nextVal.slice(0, colonStart);
+                  const after = nextVal.slice(cursor);
+                  const replaced = `${before}${found.emoji} ${after}`;
+                  const newCursor = before.length + found.emoji.length + 1;
+
+                  setText(replaced);
+                  e.target.value = replaced;
+                  e.target.setSelectionRange(newCursor, newCursor);
+
+                  setEmojiTrigger(null);
+                  setEmojiSuggestions([]);
+                  setSelectedEmojiIndex(0);
+                  setEmojiPopoverPosition(null);
+                  checkSelection(e);
+                  return;
+                }
+              }
+
+              setText(nextVal);
               checkSelection(e);
+
+              // Check for active emoji autocomplete trigger, e.g. :fi
+              const trigger = getEmojiTrigger(nextVal, cursor);
+              if (trigger) {
+                setEmojiTrigger(trigger);
+                const matches = searchEmojis(trigger.query, 6);
+                setEmojiSuggestions(matches);
+                setSelectedEmojiIndex(0);
+                updateEmojiPopoverPosition(trigger.colonIndex, nextVal);
+              } else {
+                setEmojiTrigger(null);
+                setEmojiSuggestions([]);
+                setSelectedEmojiIndex(0);
+                setEmojiPopoverPosition(null);
+              }
             }}
             onKeyDown={handleKeyDown}
             onCut={handleCut}
-            onSelect={checkSelection}
+            onSelect={(e) => {
+              checkSelection(e);
+              const cursor = e.currentTarget.selectionStart;
+              const val = e.currentTarget.value;
+              if (e.currentTarget.selectionStart !== e.currentTarget.selectionEnd) {
+                setEmojiTrigger(null);
+                setEmojiSuggestions([]);
+                setEmojiPopoverPosition(null);
+              } else {
+                const trigger = getEmojiTrigger(val, cursor);
+                if (trigger) {
+                  setEmojiTrigger(trigger);
+                  const matches = searchEmojis(trigger.query, 6);
+                  setEmojiSuggestions(matches);
+                  updateEmojiPopoverPosition(trigger.colonIndex, val);
+                } else if (emojiTrigger) {
+                  setEmojiTrigger(null);
+                  setEmojiSuggestions([]);
+                  setEmojiPopoverPosition(null);
+                }
+              }
+            }}
             onKeyUp={checkSelection}
             onMouseUp={checkSelection}
             onBlur={() => setHasSelection(false)}
