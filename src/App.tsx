@@ -11,10 +11,6 @@ import { Reactions } from "./Reactions";
 import { FontSelector, ThemeSelector } from "./Selectors";
 import { useAutoFontSize } from "./useAutoFontSize";
 
-const isMac =
-  typeof navigator !== "undefined" &&
-  /Mac|iPhone|iPod|iPad/.test(navigator.platform || navigator.userAgent);
-
 interface WordDeleteRange {
   startIndex: number;
   endIndex: number;
@@ -393,23 +389,35 @@ export default function App() {
     deleteAnimIdRef.current = requestAnimationFrame(step);
   }, [autoFontSize, cancelRapidDelete, dissolveLetter, text]);
 
-  // Shortcut handler: Ctrl + Backspace (word delete) or Backspace/Delete with active selection (e.g. Ctrl + A -> Backspace)
+  // Shortcut handler: Backspace/Delete with active selection (e.g. Ctrl + A -> Backspace) or Ctrl + X (Cut)
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement> | KeyboardEvent) => {
       const isBackspace = e.key === "Backspace" || e.code === "Backspace";
       const isDelete = e.key === "Delete" || e.code === "Delete";
+      const isCutKey =
+        (e.ctrlKey || e.metaKey) &&
+        !e.altKey &&
+        (e.code === "KeyX" || (typeof e.key === "string" && e.key.toLowerCase() === "x"));
 
       const hasActiveSelection =
         textRef.current != null &&
         textRef.current.selectionStart !== textRef.current.selectionEnd;
 
-      const isCtrlBackspace =
-        isBackspace && (e.ctrlKey || (isMac && e.altKey));
-
       const isSelectionDelete =
         (isBackspace || isDelete) && hasActiveSelection;
 
-      if (isCtrlBackspace || isSelectionDelete) {
+      const isCut = isCutKey && hasActiveSelection;
+
+      if (isSelectionDelete || isCut) {
+        if (isCut && textRef.current) {
+          const start = Math.min(textRef.current.selectionStart, textRef.current.selectionEnd);
+          const end = Math.max(textRef.current.selectionStart, textRef.current.selectionEnd);
+          const selectedText = textRef.current.value.slice(start, end);
+          if (selectedText && navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(selectedText).catch(() => {});
+          }
+        }
+
         e.preventDefault();
         e.stopPropagation();
         startRapidDelete();
@@ -436,6 +444,26 @@ export default function App() {
       }
     },
     [cancelRapidDelete, startRapidDelete]
+  );
+
+  const handleCut = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const target = textRef.current;
+      if (!target) return;
+      const { selectionStart, selectionEnd, value } = target;
+      if (selectionStart !== selectionEnd) {
+        const start = Math.min(selectionStart, selectionEnd);
+        const end = Math.max(selectionStart, selectionEnd);
+        const selectedText = value.slice(start, end);
+        if (selectedText) {
+          e.clipboardData.setData("text/plain", selectedText);
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        startRapidDelete();
+      }
+    },
+    [startRapidDelete]
   );
 
   // Global window fallback listener
@@ -618,6 +646,7 @@ export default function App() {
               checkSelection(e);
             }}
             onKeyDown={handleKeyDown}
+            onCut={handleCut}
             onSelect={checkSelection}
             onKeyUp={checkSelection}
             onMouseUp={checkSelection}

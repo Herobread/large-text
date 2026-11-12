@@ -66,6 +66,9 @@ function generatePhysicsKeyframes(
 export function Reactions({ theme }: { theme: ColorTheme }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const activeKeysRef = useRef<Set<number>>(new Set());
+  const activePointersRef = useRef<Map<number, number>>(new Map());
+  const showerIntervalRef = useRef<number | null>(null);
 
   // Detect Mac platform for shortcut hint in tooltips
   const isMac =
@@ -137,8 +140,8 @@ export function Reactions({ theme }: { theme: ColorTheme }) {
 
     container.appendChild(el);
 
-    // Keep active DOM elements bounded to 60 for optimal memory & compositor performance
-    if (container.childElementCount > 60) {
+    // Keep active DOM elements bounded to 120 for optimal memory & compositor performance during multi-emoji showers
+    if (container.childElementCount > 120) {
       container.firstElementChild?.remove();
     }
 
@@ -184,7 +187,45 @@ export function Reactions({ theme }: { theme: ColorTheme }) {
     }
   }, []);
 
-  // Keyboard shortcut listener: Ctrl + 1..N or Cmd + 1..N
+  const getActiveIndices = useCallback((): Set<number> => {
+    const indices = new Set<number>();
+    for (const idx of activeKeysRef.current) {
+      indices.add(idx);
+    }
+    for (const idx of activePointersRef.current.values()) {
+      indices.add(idx);
+    }
+    return indices;
+  }, []);
+
+  const stopShower = useCallback(() => {
+    if (showerIntervalRef.current !== null) {
+      window.clearInterval(showerIntervalRef.current);
+      showerIntervalRef.current = null;
+    }
+  }, []);
+
+  const startShowerIfNeeded = useCallback(() => {
+    if (showerIntervalRef.current !== null) return;
+    showerIntervalRef.current = window.setInterval(() => {
+      const active = getActiveIndices();
+      if (active.size === 0) {
+        stopShower();
+        return;
+      }
+      for (const idx of active) {
+        triggerReaction(idx);
+      }
+    }, 85);
+  }, [getActiveIndices, stopShower, triggerReaction]);
+
+  const checkStopShower = useCallback(() => {
+    if (getActiveIndices().size === 0) {
+      stopShower();
+    }
+  }, [getActiveIndices, stopShower]);
+
+  // Keyboard shortcut listener: Ctrl + 1..N or Cmd + 1..N (holding multiple keys showers them simultaneously)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.altKey) return;
@@ -204,20 +245,68 @@ export function Reactions({ theme }: { theme: ColorTheme }) {
       if (index >= 0 && index < EMOJIS.length) {
         e.preventDefault();
         e.stopPropagation();
-        triggerReaction(index);
+
+        // Let the shower loop provide steady, synchronous multi-emoji showering without OS repeat jitter
+        if (e.repeat) return;
+
+        if (!activeKeysRef.current.has(index)) {
+          activeKeysRef.current.add(index);
+          triggerReaction(index);
+          startShowerIfNeeded();
+        }
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Control" || e.key === "Meta" || (!e.ctrlKey && !e.metaKey)) {
+        activeKeysRef.current.clear();
+        checkStopShower();
+        return;
+      }
+
+      let index = -1;
+      const digitCodeMatch = e.code.match(/^(?:Digit|Numpad)([1-9])$/);
+      if (digitCodeMatch) {
+        index = parseInt(digitCodeMatch[1], 10) - 1;
+      } else if (e.key >= "1" && e.key <= String(EMOJIS.length)) {
+        index = parseInt(e.key, 10) - 1;
+      }
+
+      if (index >= 0 && index < EMOJIS.length) {
+        activeKeysRef.current.delete(index);
+        checkStopShower();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown, { capture: true });
+    window.addEventListener("keyup", handleKeyUp, { capture: true });
     return () => {
       window.removeEventListener("keydown", handleKeyDown, { capture: true });
+      window.removeEventListener("keyup", handleKeyUp, { capture: true });
     };
-  }, [triggerReaction]);
+  }, [checkStopShower, startShowerIfNeeded, triggerReaction]);
+
+  // Clear all held reactions when window blurs
+  useEffect(() => {
+    const handleBlur = () => {
+      activeKeysRef.current.clear();
+      activePointersRef.current.clear();
+      stopShower();
+    };
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, [stopShower]);
 
   // Clean up any remaining floating particles when unmounting
   useEffect(() => {
     const container = containerRef.current;
     return () => {
+      if (showerIntervalRef.current !== null) {
+        window.clearInterval(showerIntervalRef.current);
+        showerIntervalRef.current = null;
+      }
       if (container) {
         container.innerHTML = "";
       }
@@ -260,14 +349,44 @@ export function Reactions({ theme }: { theme: ColorTheme }) {
               buttonRefs.current[index] = el;
             }}
             className="reaction-btn"
-            onMouseDown={(e) => {
-              // Prevent losing focus from the central textarea
+            onPointerDown={(e) => {
+              // Prevent losing focus from central textarea
               e.preventDefault();
+              try {
+                e.currentTarget.setPointerCapture(e.pointerId);
+              } catch {
+                // Ignore pointer capture errors
+              }
+              activePointersRef.current.set(e.pointerId, index);
+              triggerReaction(index);
+              startShowerIfNeeded();
+            }}
+            onPointerUp={(e) => {
+              try {
+                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+                }
+              } catch {
+                // Ignore
+              }
+              activePointersRef.current.delete(e.pointerId);
+              checkStopShower();
+            }}
+            onPointerCancel={(e) => {
+              activePointersRef.current.delete(e.pointerId);
+              checkStopShower();
+            }}
+            onLostPointerCapture={(e) => {
+              activePointersRef.current.delete(e.pointerId);
+              checkStopShower();
             }}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              triggerReaction(index);
+              // If triggered via keyboard (Enter/Space on focused button)
+              if (e.detail === 0) {
+                triggerReaction(index);
+              }
             }}
             title={`React with ${emoji} (${modKeyLabel}+${index + 1})`}
             aria-label={`Reaction ${emoji}, shortcut ${modKeyLabel}+${index + 1}`}
